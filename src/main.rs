@@ -1,61 +1,100 @@
-use futures_util::{stream::BoxStream, StreamExt};
-use poem::{listener::TcpListener, Route, Server};
-use poem_openapi::{
-    payload::{EventStream, PlainText},
-    Object, OpenApi, OpenApiService,
+use futures_util::{SinkExt, StreamExt};
+use poem::{
+    error::InternalServerError,
+    get, handler,
+    listener::TcpListener,
+    middleware::{AddData, Tracing},
+    web::{
+        websocket::{Message, WebSocket},
+        Data, Html, Path,
+    },
+    EndpointExt, IntoResponse, Route, Server,
 };
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tokio::{sync::broadcast::Sender, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use tera::{Context, Tera};
+use tokio::sync::broadcast::Sender;
+use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
-#[derive(Object)]
-struct Event {
-    value: i32,
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    pub static ref TEMPLATES: Tera = {
+        let mut tera = match Tera::new("templates/**/*") {
+            Ok(t) => t,
+            Err(e) => {
+                println!("Parsing error(s): {}", e);
+                ::std::process::exit(1);
+            }
+        };
+        tera.autoescape_on(vec![".html", ".sql"]);
+        tera
+    };
 }
 
-type Db = Arc<Mutex<HashMap<String, Sender<String>>>>;
-
-struct Api {
-    db: Db,
+struct AppState {
+    clients: Mutex<HashMap<String, Sender<String>>>,
 }
 
-async fn process() -> Event {
-    for i in 0.. {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        yield Event { value: i };
+async fn process(channel: Sender<String>) {
+    for i in 1..10 {
+        channel
+            .send(i.to_string())
+            .expect("Failed to push message to channel");
+        sleep(Duration::from_secs(10)).await;
     }
 }
 
-#[OpenApi]
-impl Api {
-    pub fn new(db: Db) -> Self {
-        Self { db: db }
-    }
+#[handler]
+fn index(state: Data<&Arc<AppState>>) -> Result<Html<String>, poem::Error> {
+    let mut s = state.clients.lock().unwrap();
+    let id = Uuid::new_v4();
+    let sender = tokio::sync::broadcast::channel::<String>(32).0;
+    let sender_worker = sender.clone();
+    s.insert(id.to_string(), sender);
 
-    #[oai(path = "/page", method = "get")]
-    async fn page(&self) -> PlainText<String> {
-        let mut router = self.db.lock().unwrap();
-        let id = Uuid::new_v4();
-        router.insert(
-            id.to_string(),
-            tokio::sync::broadcast::channel::<String>(32).0,
-        );
-        PlainText(id.to_string())
-    }
+    tokio::spawn(async {
+        process(sender_worker).await;
+    });
 
-    #[oai(path = "/events", method = "get")]
-    async fn index(&self) -> EventStream<BoxStream<'static, Event>> {
-        EventStream::new(
-            async_stream::stream! {
-                for i in 0.. {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    yield Event { value: i };
+    let mut context = Context::new();
+    context.insert("id", &id.to_string());
+    TEMPLATES
+        .render("index.html.tera", &context)
+        .map_err(InternalServerError)
+        .map(Html)
+}
+
+#[handler]
+fn ws(Path(name): Path<String>, ws: WebSocket, state: Data<&Arc<AppState>>) -> impl IntoResponse {
+    let client = state.clients.lock().unwrap();
+    let sender = client.get(&name).unwrap().clone();
+    let mut receiver = sender.subscribe();
+    ws.on_upgrade(move |socket| async move {
+        let (mut sink, mut stream) = socket.split();
+
+        tokio::spawn(async move {
+            while let Some(Ok(msg)) = stream.next().await {
+                if let Message::Text(text) = msg {
+                    if sender.send(format!("{}: {}", name, text)).is_err() {
+                        break;
+                    }
                 }
             }
-            .boxed(),
-        )
-    }
+        });
+
+        tokio::spawn(async move {
+            while let Ok(msg) = receiver.recv().await {
+                if sink.send(Message::Text(msg)).await.is_err() {
+                    break;
+                }
+            }
+        });
+    })
 }
 
 #[tokio::main]
@@ -65,13 +104,17 @@ async fn main() -> Result<(), std::io::Error> {
     }
     tracing_subscriber::fmt::init();
 
-    let db = Arc::new(Mutex::new(HashMap::<String, Sender<String>>::new()));
+    let state = Arc::new(AppState {
+        clients: Mutex::new(HashMap::new()),
+    });
 
-    let api_service =
-        OpenApiService::new(Api::new(db), "Hello World", "1.0").server("http://localhost:3000/api");
-    let ui = api_service.swagger_ui();
+    let app = Route::new()
+        .at("/", get(index))
+        .at("/ws/:id", get(ws))
+        .with(AddData::new(state))
+        .with(Tracing);
 
     Server::new(TcpListener::bind("127.0.0.1:3000"))
-        .run(Route::new().nest("/api", api_service).nest("/", ui))
+        .run(app)
         .await
 }
