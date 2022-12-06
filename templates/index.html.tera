@@ -32,6 +32,12 @@
             console.log(event);
             progressBar.value = parseInt(event.data);
         }
+
+        var eventSource = new EventSource('event/{{ id }}');
+        eventSource.onmessage = function (event) {
+            console.log(event);
+        }
+
     </script>
 
 </body>

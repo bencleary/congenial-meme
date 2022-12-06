@@ -1,3 +1,4 @@
+use async_stream::stream;
 use futures_util::{SinkExt, StreamExt};
 use poem::{
     error::InternalServerError,
@@ -5,6 +6,7 @@ use poem::{
     listener::TcpListener,
     middleware::{AddData, Tracing},
     web::{
+        sse::{Event, SSE},
         websocket::{Message, WebSocket},
         Data, Html, Path,
     },
@@ -17,6 +19,7 @@ use std::{
 use tera::{Context, Tera};
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Duration};
+
 use uuid::Uuid;
 
 #[macro_use]
@@ -70,6 +73,21 @@ fn index(state: Data<&Arc<AppState>>) -> Result<Html<String>, poem::Error> {
 }
 
 #[handler]
+async fn event(Path(name): Path<String>, state: Data<&Arc<AppState>>) -> SSE {
+    let s = state.clients.lock().unwrap();
+    let sender = s.get(&name).unwrap();
+    let mut rx = sender.subscribe();
+
+    let stream = stream! {
+        while let Ok(item) = rx.recv().await {
+            yield item;
+        }
+    };
+
+    SSE::new(stream.map(|item| Event::message(item))).keep_alive(Duration::from_secs(5))
+}
+
+#[handler]
 fn ws(Path(name): Path<String>, ws: WebSocket, state: Data<&Arc<AppState>>) -> impl IntoResponse {
     let client = state.clients.lock().unwrap();
     let sender = client.get(&name).unwrap().clone();
@@ -111,6 +129,7 @@ async fn main() -> Result<(), std::io::Error> {
     let app = Route::new()
         .at("/", get(index))
         .at("/ws/:id", get(ws))
+        .at("/event/:id", get(event))
         .with(AddData::new(state))
         .with(Tracing);
 
