@@ -42,9 +42,9 @@ struct AppState {
 
 async fn process(channel: Sender<String>) {
     for i in 1..10 {
-        // TODO - investigate why unwarp causes error
         let progress = i * 10;
-        channel.send(progress.to_string());
+        // TODO - investigate why unwarp causes error
+        let _ = channel.send(progress.to_string());
         sleep(Duration::from_secs(10)).await;
     }
 }
