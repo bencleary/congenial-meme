@@ -6,11 +6,17 @@ A sample repo showing how using Poem, Tokio and WebSockets you can perform cross
 
 ## Design
 
-The main idea was to create a struct which held and id (in this case a UUID) and a channel `tokio::sync::broadcast::channel` this enabled the struct to act as a router of sorts, but we needed a way to make this available on all routes within Poem. Poem does come with a Middleware called `AddData` and when using `AddData::new(<T>)` it will inject this into all handlers.
+The main idea was to create a struct which held and id (in this case a UUID) and a channel `tokio::sync::broadcast::channel` this enabled the struct to act as a router of sorts, but we needed a way to make this available on all routes within Poem. Poem does come with a Middleware called `AddData` when exploring some of the examples the MongoDB example showed how to pass a collection to all handlers, so when using `AddData::new(<T>)` it will inject this into all handlers. This allowed me to setup my app state and then share this with all handlers.
+
+When using AddData it matches to the exact type not name!
 
 ```rust
 struct AppState {
     clients: Mutex<HashMap<String, Sender<String>>>,
+}
+
+fn index(state: Data<&Arc<AppState>>) -> Result<Html<String>, poem::Error> {
+    // some handler
 }
 
 #[tokio::main]
