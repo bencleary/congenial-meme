@@ -1,0 +1,15 @@
+<section>
+    <h1>Output</h1>
+    <div id="container">
+
+    </div>
+</section>
+
+
+<script>
+    let ws = new WebSocket("ws://localhost:3000/ws/{{ id }}");
+
+    ws.onmessage = function (event) {
+        console.log(event);
+    }
+</script>

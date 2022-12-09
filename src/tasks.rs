@@ -1,41 +1,26 @@
+use async_process::Command;
 use std::format;
-/**
-* Functions that are to be chained together as an audio work space
-* system.
-*
-* convert to wav file
-* ffmpeg -y -i night-run-125181.mp3 -acodec pcm_u8 -ar 22050 song.wav
-* denoise and remove background noise
-* ffmpeg -i song.wav -af lowpass=3000,highpass200,afftdn=nf=-25 optmised.wav
-* split to segments
-* ffmpeg -i optmised.wav -f segment -segment_time 30 -c copy out%03d.wav
-*
-* ffmpeg -i sample.mp3 -acodec pcm_u8 -ar 22050 sample.wav
-   ffmpeg -i sample.wav -af lowpass=3000,highpass=200,afftdn=nf=-25 optmised.wav
-   ffmpeg -i optmised.wav -f segment -segment_time 10 -c copy out%03d.wav
-*
-*
-*/
 use std::io::{BufRead, BufReader, Error};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+use tokio::sync::broadcast::Sender;
 
-struct Audio {
-    pub file: String,
-}
-
-fn convert_to_wav(input: Audio) -> Result<(), Error> {
+pub async fn convert_to_wav(
+    uuid: String,
+    file: String,
+    channel: Sender<String>,
+) -> Result<(), Error> {
     let mut cmd = Command::new("ffmpeg")
-        .args([
-            "-i",
-            format!("{}", input.file),
-            "-ss",
-            "00:00:00",
-            "-to",
-            "00:02:00",
-            "output.wav",
-            "-progress",
-            "pipe:1",
-        ])
+        .arg("-i")
+        .arg(&format!("temp/{}/{}", uuid, file))
+        .arg("-c")
+        .arg("pcm_s16le")
+        .arg("-ar")
+        .arg("44100")
+        .arg("-f")
+        .arg("wav")
+        .arg(&format!("temp/{}/{}", uuid, "output.wav"))
+        .arg("-progress")
+        .arg("progress.log.txt")
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
@@ -47,6 +32,7 @@ fn convert_to_wav(input: Audio) -> Result<(), Error> {
 
         for line in stdout_lines {
             println!("Read: {:?}", line);
+            let _ = channel.send(line.unwrap());
         }
     }
 
