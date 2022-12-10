@@ -63,18 +63,15 @@ pub async fn upload(
                 };
             }
 
-            let upload_file_path = format!("temp/{}/{}", uuid, file_name.as_ref().unwrap());
+            let upload_file_path = format!("temp/{}/{}", uuid, "input.mp3");
             let mut file = File::create(upload_file_path).unwrap();
             file.write_all(&bytes).unwrap();
         }
     }
 
-    if let Ok(Some(field)) = upload_form.next_field().await {
-        println!("Spawing Task");
-        tokio::spawn(async move {
-            convert_to_wav(uuid, field.file_name().unwrap().to_string(), sender).await;
-        });
-    }
+    tokio::spawn(async move {
+        convert_to_wav(uuid, "input.mp3".to_string(), sender).await;
+    });
 
     TEMPLATES
         .render("partials/progress.html.tera", &context)

@@ -16,6 +16,7 @@ tera = "1.17.1"
 lazy_static = "1.4.0"
 futures = "0.3.25"
 async-process = "1.6.0"
+futures-lite = "1.12.0"
 
 [dependencies.uuid]
 version = "1.2.2"

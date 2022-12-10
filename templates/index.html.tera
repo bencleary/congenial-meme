@@ -15,6 +15,12 @@
     htmx.on('#form', 'htmx:xhr:progress', function (evt) {
         htmx.find('#progress').setAttribute('value', evt.detail.loaded / evt.detail.total * 100)
     });
+
+     let ws = new WebSocket("ws://localhost:3000/ws/{{ id }}");
+
+    ws.onmessage = function (event) {
+        console.log(event);
+    }
 </script>
 
 {% endblock %}

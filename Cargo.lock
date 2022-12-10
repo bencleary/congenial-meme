@@ -1599,6 +1599,7 @@ dependencies = [
  "async-process",
  "async-stream",
  "futures",
+ "futures-lite",
  "futures-util",
  "lazy_static",
  "poem",
