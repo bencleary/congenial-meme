@@ -1,20 +1,16 @@
 use std::format;
-use async_process::{Command, Stdio};
-use futures_lite::{io::BufReader, prelude::*};
+use std::process::Stdio;
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Duration};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+};
 
-pub async fn convert_to_wav(
-    uuid: String,
-    file: String,
-    channel: Sender<String>,
-) {
-
-    channel.send("Update 1".to_string());
+pub async fn convert_to_wav(uuid: String, file: String, channel: Sender<String>) {
+    _ = channel.send("Preparing Task".to_string());
 
     sleep(Duration::from_secs(5)).await;
-
-    channel.send("waited".to_string());
 
     let mut child = Command::new("ffmpeg")
         .arg("-i")
@@ -26,13 +22,22 @@ pub async fn convert_to_wav(
         .arg("-f")
         .arg("wav")
         .arg(&format!("temp/{}/{}", uuid, "output.wav"))
+        .arg("-progress")
+        .arg("pipe:1")
         .stdout(Stdio::piped())
-        .spawn().unwrap();
+        .spawn()
+        .map_err(|err| println!("{}", err))
+        .unwrap();
 
+    if let Some(stdout) = child.stdout.take() {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
 
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
-
-    while let Some(line) = lines.next().await {
-        channel.send(line.unwrap());
+        loop {
+            if matches!(reader.read_line(&mut line).await, Ok(0) | Err(_)) {
+                break;
+            }
+            _ = channel.send(line.clone());
+        }
     }
 }
