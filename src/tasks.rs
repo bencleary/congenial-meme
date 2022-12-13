@@ -10,7 +10,7 @@ use tokio::{
 pub async fn convert_to_wav(uuid: String, file: String, channel: Sender<String>) {
     _ = channel.send("Preparing Task".to_string());
 
-    sleep(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(100)).await;
 
     let mut child = Command::new("ffmpeg")
         .arg("-i")
