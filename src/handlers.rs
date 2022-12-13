@@ -15,6 +15,7 @@ use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::sync::Arc;
+use std::thread;
 use tera::Context;
 use uuid::Uuid;
 
@@ -52,7 +53,7 @@ pub async fn upload(
     context.insert("id", &uuid);
 
     while let Ok(Some(field)) = upload_form.next_field().await {
-        let file_name = field.file_name().map(ToString::to_string);
+        let _file_name = field.file_name().map(ToString::to_string);
         if let Ok(bytes) = field.bytes().await {
             // create working directory for file based on UUID
             let working_dir = format!("temp/{}", uuid);
@@ -62,15 +63,16 @@ pub async fn upload(
                     Err(error) => panic!("{:?}", error),
                 };
             }
-
+            // hard coded file name until i can work out how to get the file name outside of the while loop
+            // TODO! - Ask Sunli about file name access
             let upload_file_path = format!("temp/{}/{}", uuid, "input.mp3");
             let mut file = File::create(upload_file_path).unwrap();
             file.write_all(&bytes).unwrap();
         }
     }
 
-    tokio::spawn(async move {
-        convert_to_wav(uuid, "input.mp3".to_string(), sender).await;
+    thread::spawn(|| {
+        convert_to_wav(uuid, "input.mp3".to_string(), sender);
     });
 
     TEMPLATES

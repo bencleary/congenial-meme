@@ -1,6 +1,22 @@
 <section>
-    <h1>Output</h1>
-    <div id="container">
+    <h1>Output Screen</h1>
+    <div id="container"
+        class="w-full rounded-md bg-black text-green-500 h-64 mt-4 overflow-y-scroll flex flex-col reverse">
 
     </div>
 </section>
+
+<script>
+    let ws = new WebSocket("ws://localhost:3000/ws/{{ id }}");
+    let outputContainer = document.getElementById("container");
+
+    ws.onmessage = function (event) {
+        if (event.data.includes('\n')) {
+            let parts = event.data.split('\n');
+            outputContainer.innerHTML = parts.join('<br/>');
+        } else {
+            outputContainer.innerHTML = event.data;
+        }
+        outputContainer.scrollTop = outputContainer.scrollHeight;
+    }
+</script>

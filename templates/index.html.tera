@@ -16,11 +16,10 @@
         htmx.find('#progress').setAttribute('value', evt.detail.loaded / evt.detail.total * 100)
     });
 
-     let ws = new WebSocket("ws://localhost:3000/ws/{{ id }}");
+    document.body.addEventListener('htmx:load', function (evt) {
+        htmx.process(document.body);
+    });
 
-    ws.onmessage = function (event) {
-        console.log(event);
-    }
 </script>
 
 {% endblock %}
